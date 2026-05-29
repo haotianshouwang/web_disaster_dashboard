@@ -57,6 +57,7 @@ function RecentPushesCard() {
                 var cat = classify(msg.event_type);
                 var text = String(msg.text || '').replace(/\n/g, ' ').substring(0, 60);
                 if (String(msg.text || '').length > 60) text += '...';
+                var imgCount = (msg.images && Array.isArray(msg.images)) ? msg.images.length : 0;
                 return React.createElement(
                     'div', { key: idx, className: 'recent-push-row' },
                     React.createElement('div', { className: 'recent-push-dot', style: { background: colors[cat] } }),
@@ -65,7 +66,7 @@ function RecentPushesCard() {
                         React.createElement(Typography, { variant: 'caption', className: 'recent-push-time' },
                             formatTimeWithZone(msg.timestamp || '', 'UTC+8', true)),
                         React.createElement(Typography, { variant: 'body2', className: 'recent-push-text' },
-                            text)
+                            text + (imgCount > 0 ? ' 🖼️×' + imgCount : ''))
                     )
                 );
             })

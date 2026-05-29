@@ -4,7 +4,6 @@ const { useState, useEffect, useMemo, useCallback } = React;
 function PushMessagesView() {
     const [messages, setMessages] = useState([]);
     const [tab, setTab] = useState('all');
-    // 地区过滤（仅浏览器本地生效）
     var _a = useState(function () {
         try { return localStorage.getItem('dashboard_region') || ''; }
         catch (e) { return ''; }
@@ -15,14 +14,12 @@ function PushMessagesView() {
     useEffect(function () {
         var store = window.DashboardData.getStore();
         setMessages(store.pushMessages.slice(0, 100));
-
         var unsub = window.DashboardData.addListener(function (s) {
             setMessages(s.pushMessages.slice(0, 100));
         });
         return unsub;
     }, []);
 
-    // 持久化地区设置
     var handleRegionChange = useCallback(function (e) {
         var v = e.target.value;
         setRegion(v);
@@ -34,17 +31,96 @@ function PushMessagesView() {
         try { localStorage.setItem('dashboard_region', ''); } catch (err) {}
     }, []);
 
-    // 地区筛选 + 分类筛选
-    var filtered = useMemo(function () {
-        var list = messages;
-        // 地区过滤
-        var kw = region.trim();
-        if (kw) {
-            list = list.filter(function (m) {
-                return (m.text || '').indexOf(kw) >= 0;
+    // 解析图片URL — 兼容3种格式（从文本中）
+    function parseImageUrlFromText(text) {
+        if (!text) return null;
+        var m = text.match(/\[图片\s*:\s*(https?:\/\/[^\s\[\]]+?)\]/i);
+        if (m) return m[1];
+        m = text.match(/报告图片\s*[：:]\s*\n?\s*(https?:\/\/[^\s\n]+)/i);
+        if (m) return m[1];
+        m = text.match(/\n(https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|svg))\s*$/im);
+        if (m) return m[1];
+        return null;
+    }
+
+    // 获取消息的所有图片URL（优先从 images 数组，降级到文本解析）
+    function getAllImageUrls(msg) {
+        var urls = [];
+        // 新版 images 数组
+        var imgs = msg.images;
+        if (imgs && Array.isArray(imgs) && imgs.length > 0) {
+            imgs.forEach(function (img) {
+                if (img.type === 'url' && img.data) {
+                    urls.push(img.data);
+                } else if (img.type === 'base64' && img.data) {
+                    // 处理 data URI 或纯 base64
+                    if (img.data.indexOf('data:') === 0) {
+                        urls.push(img.data);
+                    } else {
+                        urls.push('data:image/png;base64,' + img.data);
+                    }
+                }
             });
         }
-        // 分类过滤
+        // 降级：从文本解析
+        if (urls.length === 0) {
+            var parsed = parseImageUrlFromText(msg.text);
+            if (parsed) urls.push(parsed);
+        }
+        return urls;
+    }
+
+    function cleanText(text) {
+        if (!text) return '';
+        return text
+            .replace(/\[图片\s*:\s*https?:\/\/[^\]]+\]/gi, '')
+            .replace(/报告图片\s*[：:]\s*\n?\s*https?:\/\/[^\s\n]+/gi, '')
+            .replace(/\nhttps?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|svg)\s*$/gim, '')
+            .trim();
+    }
+
+    // 打开新窗口展示详情
+    function openDetail(msg) {
+        var imgUrls = getAllImageUrls(msg);
+        var clean = cleanText(msg.text);
+        var type = classifyType(msg.event_type);
+        var typeLabels = { earthquake: '地震', tsunami: '海啸', weather: '气象', other: '通知' };
+        var colors = { earthquake: '#D32F2F', tsunami: '#01579B', weather: '#E65100', other: '#6750A4' };
+        var imgHtml = '';
+        imgUrls.forEach(function (url) {
+            imgHtml += '<div class="img-wrap"><img src="' + url + '" alt="图片" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'"></div>';
+        });
+        var w = window.open('', '_blank');
+        if (!w) return;
+        w.document.write(
+            '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+            '<meta name="referrer" content="no-referrer">' +
+            '<title>灾害预警详情</title>' +
+            '<style>body{font-family:system-ui,-apple-system,sans-serif;max-width:700px;margin:24px auto;padding:0 16px;color:#1C1B1F;background:#FEF7FF;line-height:1.7}' +
+            '.badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;color:#fff;background:' + (colors[type] || '#6750A4') + '}' +
+            '.meta{color:#999;font-size:13px;margin:8px 0 16px}' +
+            '.text{white-space:pre-wrap;word-break:break-word;font-size:15px;margin-bottom:20px}' +
+            '.img-wrap{text-align:center;margin-top:16px}' +
+            '.img-wrap img{max-width:100%;max-height:500px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.1)}' +
+            '@media(prefers-color-scheme:dark){body{background:#141218;color:#E6E1E5}.meta{color:#CAC4D0}}</style></head><body>' +
+            '<h2><span class="badge">' + (typeLabels[type] || '通知') + '</span></h2>' +
+            '<div class="meta">' +
+            (msg.source ? (msg.source + ' &middot; ') : '') +
+            (formatTimeWithZone(msg.timestamp || '', 'UTC+8', true) || '') +
+            '</div>' +
+            '<div class="text">' + (clean || msg.text || '').replace(/\n/g, '<br>') + '</div>' +
+            imgHtml +
+            '</body></html>'
+        );
+        w.document.close();
+    }
+
+    var filtered = useMemo(function () {
+        var list = messages;
+        var kw = region.trim();
+        if (kw) {
+            list = list.filter(function (m) { return (m.text || '').indexOf(kw) >= 0; });
+        }
         if (tab !== 'all') {
             list = list.filter(function (m) {
                 var t = String(m.event_type || '').toLowerCase();
@@ -58,7 +134,6 @@ function PushMessagesView() {
         return list;
     }, [messages, tab, region]);
 
-    // 分类统计（不受地区限制）
     var stats = useMemo(function () {
         var all = 0, eq = 0, ts = 0, wx = 0, other = 0;
         messages.forEach(function (m) {
@@ -83,14 +158,23 @@ function PushMessagesView() {
 
     function renderChip(type) {
         var cat = classifyType(type);
-        var labelMap = { earthquake: '地震', tsunami: '海啸', weather: '气象', other: '通知' };
-        return React.createElement(Chip, { label: labelMap[cat], size: 'small', className: 'push-chip push-chip--' + cat });
+        var m = { earthquake: '地震', tsunami: '海啸', weather: '气象', other: '通知' };
+        return React.createElement(Chip, { label: m[cat], size: 'small', className: 'push-chip push-chip--' + cat });
     }
 
     function renderItem(msg, idx, isPinned) {
         var cat = classifyType(msg.event_type);
+        var imgUrls = getAllImageUrls(msg);
+        var hasImg = imgUrls.length > 0;
+        var clean = cleanText(msg.text);
+
         return React.createElement(
-            'div', { key: idx, className: 'push-item push-item--' + cat + (isPinned ? ' push-item--pinned' : '') },
+            'div', {
+                key: idx,
+                className: 'push-item push-item--' + cat + (isPinned ? ' push-item--pinned' : '') + (hasImg ? ' push-item--has-img' : ''),
+                onClick: function () { openDetail(msg); },
+                style: { cursor: 'pointer' }
+            },
             React.createElement('div', { className: 'push-item__bar' }),
             React.createElement(
                 'div', { className: 'push-item__body' },
@@ -102,7 +186,13 @@ function PushMessagesView() {
                     React.createElement(Typography, { variant: 'caption', className: 'push-item__time' },
                         formatTimeWithZone(msg.timestamp || '', 'UTC+8', true))
                 ),
-                React.createElement(Typography, { variant: 'body2', className: 'push-item__text' }, msg.text)
+                React.createElement(Typography, { variant: 'body2', className: 'push-item__text' }, clean),
+                hasImg && React.createElement(
+                    'div', { className: 'push-item__imgs' },
+                    imgUrls.map(function (url, i) {
+                        return React.createElement('img', { key: i, src: url, className: 'push-item__thumb', alt: '图片' });
+                    })
+                )
             )
         );
     }
@@ -118,12 +208,7 @@ function PushMessagesView() {
 
     return React.createElement(
         Box, { className: 'push-view' },
-        // ── 置顶最新消息卡片 ──
-        latest && React.createElement(
-            Box, { className: 'push-pinned' },
-            renderItem(latest, 'pinned', true)
-        ),
-        // ── 统计行 ──
+        latest && React.createElement(Box, { className: 'push-pinned' }, renderItem(latest, 'pinned', true)),
         React.createElement(
             Box, { className: 'push-stats-row' },
             React.createElement('div', { className: 'push-stat-item', onClick: function () { setTab('all'); } },
@@ -139,17 +224,12 @@ function PushMessagesView() {
                 React.createElement('span', { className: 'push-stat-num' }, stats.weather),
                 React.createElement('span', { className: 'push-stat-label' }, '气象'))
         ),
-        // ── 地区过滤 + 分类 Tabs ──
         React.createElement(
             Box, { className: 'push-toolbar' },
-            React.createElement(
-                Tabs, {
-                    value: tab,
-                    onChange: function (e, v) { setTab(v); },
-                    className: 'push-tabs',
-                    variant: 'scrollable',
-                    scrollButtons: false,
-                },
+            React.createElement(Tabs, {
+                value: tab, onChange: function (e, v) { setTab(v); },
+                className: 'push-tabs', variant: 'scrollable', scrollButtons: false,
+            },
                 React.createElement(Tab, { label: '全部', value: 'all' }),
                 React.createElement(Tab, { label: '地震', value: 'earthquake' }),
                 React.createElement(Tab, { label: '海啸', value: 'tsunami' }),
@@ -159,20 +239,12 @@ function PushMessagesView() {
             React.createElement(
                 Box, { className: 'push-region-filter' },
                 React.createElement(TextField, {
-                    size: 'small',
-                    placeholder: '过滤地区…',
-                    value: region,
-                    onChange: handleRegionChange,
+                    size: 'small', placeholder: '过滤地区…', value: region, onChange: handleRegionChange,
                     className: 'push-region-input',
-                    InputProps: {
-                        endAdornment: region
-                            ? React.createElement(IconButton, { size: 'small', onClick: clearRegion, className: 'push-region-clear' }, '✕')
-                            : null,
-                    },
+                    InputProps: { endAdornment: region ? React.createElement(IconButton, { size: 'small', onClick: clearRegion }, '✕') : null }
                 })
             )
         ),
-        // ── 消息列表 ──
         React.createElement(
             'div', { className: 'push-list' },
             filtered.length === 0
