@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <!-- 适配多端设备的视口声明，支持多指无极缩放 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>灾害预警</title>
+
+    <!-- 站点图标及预加载优化 -->
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="preload" href="logo.png" as="image" fetchpriority="high">
+
+    <!-- 主题快速同步拦截器，防止白屏期闪烁 -->
+    <script>
+        (function () {
+            try {
+                var savedTheme = localStorage.getItem('theme');
+                if (savedTheme === 'dark') {
+                    document.documentElement.classList.add('theme-dark');
+                    document.body.classList.add('dark-theme');
+                }
+            } catch (e) {}
+        })();
+    </script>
+
+    <!-- 字体资源预加载与引入 -->
+    <link rel="preload" href="fonts/outfit.css" as="style">
+    <link href="fonts/outfit.css" rel="stylesheet">
+
+    <!-- 仪表盘视图、布局与组件样式表 -->
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/views/status.css">
+    <link rel="stylesheet" href="css/views/events.css">
+    <link rel="stylesheet" href="css/views/stats.css">
+    <link rel="stylesheet" href="css/views/pushmsgs.css">
+
+    <!-- 核心 React 及 UI 框架运行时预加载 -->
+    <link rel="preload" href="lib/react.production.min.js" as="script" crossorigin>
+    <link rel="preload" href="lib/react-dom.production.min.js" as="script" crossorigin>
+    <link rel="preload" href="lib/material-ui.production.min.js" as="script">
+
+    <!-- 基础渲染引擎：React 18 生产环境库 -->
+    <script crossorigin src="lib/react.production.min.js" defer></script>
+    <script crossorigin src="lib/react-dom.production.min.js" defer></script>
+
+    <!-- 浏览器端 JSX 实时编译器 -->
+    <script src="lib/babel.min.js" defer></script>
+
+    <!-- 基于 Material Design 风格的全局组件库 -->
+    <script src="lib/material-ui.production.min.js" defer></script>
+
+    <!-- 状态共享样式主题所依赖的样式引擎 -->
+    <script src="lib/emotion-react.umd.min.js" defer></script>
+    <script src="lib/emotion-styled.umd.min.js" defer></script>
+</head>
+
+<body>
+    <!-- 独立于 React 渲染根节点外的首屏加载骨架屏及密码校验面板，用以优化首屏等待感 -->
+    <div id="loading-skeleton" class="boot-loader" role="status" aria-live="polite" aria-atomic="true">
+
+        <!-- 动画加载状态条 -->
+        <div id="bl-loading">
+            <div class="boot-loader__logo" aria-hidden="true">
+                <img src="logo.png" alt="" width="56" height="56">
+            </div>
+            <div class="boot-loader__title">灾害预警</div>
+            <div class="boot-loader__subtitle">正在加载...</div>
+            <div class="boot-loader__progress" aria-hidden="true">
+                <div class="boot-loader__progress-bar"></div>
+            </div>
+            <span class="visually-hidden">应用资源加载中，请稍候</span>
+        </div>
+
+        <!-- 面板访问身份校验表单（在令牌失效时通过 authBootstrap.js 自动激活） -->
+        <form id="bl-login" onsubmit="window.__BL_HANDLE_LOGIN(event)">
+            <div class="boot-loader__logo boot-loader__logo--static" aria-hidden="true">
+                <img src="logo.png" alt="" width="56" height="56">
+            </div>
+            <div class="boot-loader__title">灾害预警</div>
+            <div class="boot-loader__subtitle boot-loader__subtitle--login">请输入访问密码</div>
+            <div class="bl-error" id="bl-login-error"></div>
+            <input
+                id="bl-username"
+                type="text"
+                autocomplete="username"
+                tabindex="-1"
+                aria-hidden="true"
+                style="position:absolute;opacity:0;pointer-events:none;height:0;width:0;border:0;padding:0;"
+            >
+            <div class="bl-input-wrap">
+                <input id="bl-password" class="bl-input" type="password" placeholder="密码" autocomplete="current-password">
+                <button class="bl-toggle-pw" type="button" id="bl-toggle-pw" title="显示/隐藏密码">👁️</button>
+            </div>
+            <button id="bl-submit" class="bl-submit-btn" type="submit">登录</button>
+        </form>
+
+    </div>
+
+    <!-- React 挂载的目标宿主节点 -->
+    <div id="root" aria-busy="true" aria-live="polite"></div>
+
+    <!-- 0. 后端连接配置（最优先加载，设置 API/WS 基础地址） -->
+    <script src="js/config.js"></script>
+
+    <!-- 1. 基础认证与底层网络客户端工具 -->
+    <script src="js/utils/auth.js"></script>
+    <script src="js/services/apiClient.js"></script>
+    <script src="js/utils/authBootstrap.js"></script>
+
+    <!-- 2. 前端公共工具类 -->
+    <script src="js/utils/formatters.js" defer></script>
+    <script src="js/utils/eventFormatters.js" defer></script>
+    <script src="js/utils/eventGrouping.js" defer></script>
+
+    <!-- 3. WebSocket 统一数据层（无需 HTTP API） -->
+    <script src="js/services/statsNormalizer.js" defer></script>
+    <script src="js/services/webSocketClient.js" defer></script>
+    <script src="js/services/dashboardData.js?v=4" defer></script>
+
+    <!-- 4. 全局 Reducer 状态管理与数据总线 -->
+    <script src="js/context/appState.js" defer></script>
+    <script src="js/context/appReducer.js" defer></script>
+    <script type="text/babel" src="js/context/AppContext.jsx" defer></script>
+
+    <!-- 5. MaterialUI 全局自适应调色板 -->
+    <script src="js/theme/tokens.js" defer></script>
+    <script src="js/theme/createAppTheme.js" defer></script>
+
+    <!-- 6. 核心业务逻辑生命周期 Hooks -->
+    <script type="text/babel" src="js/hooks/app/useWebSocket.js" defer></script>
+    <script type="text/babel" src="js/hooks/app/useAppBootstrap.js" defer></script>
+    <script type="text/babel" src="js/hooks/app/useThemeSync.js" defer></script>
+    <script type="text/babel" src="js/hooks/app/usePersistedViewState.js" defer></script>
+    <script type="text/babel" src="js/hooks/app/useBootloaderDismiss.js" defer></script>
+    <script type="text/babel" src="js/hooks/app/useAuthReadyState.js" defer></script>
+    <script type="text/babel" src="js/hooks/app/useStatusUptimeEffect.js" defer></script>
+
+    <!-- 7. 页面滚动位置还原与记忆 Hooks -->
+    <script type="text/babel" src="js/hooks/scroll/usePreservedScroll.js" defer></script>
+    <script type="text/babel" src="js/hooks/scroll/useMainScrollMemory.js" defer></script>
+
+    <!-- 8. 事件及查询拉取业务 Hooks -->
+    <script type="text/babel" src="js/hooks/events/useEventsQuery.js" defer></script>
+    <script type="text/babel" src="js/hooks/events/useMajorEvents.js" defer></script>
+    <script type="text/babel" src="js/hooks/events/useWeatherQuery.js" defer></script>
+
+    <!-- 9. 公共层原子及布局视图组件 -->
+    <script type="text/babel" src="js/components/common/Toast.jsx" defer></script>
+    <script type="text/babel" src="js/components/common/PaginationBar.jsx" defer></script>
+    <script type="text/babel" src="js/components/common/Header.jsx" defer></script>
+    <script type="text/babel" src="js/components/common/Sidebar.jsx" defer></script>
+
+    <!-- 10. 运行状态页专属子组件 -->
+    <script type="text/babel" src="js/components/status/StatusCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/status/ConnectionsGrid.jsx" defer></script>
+    <script type="text/babel" src="js/components/status/NewsTicker.jsx" defer></script>
+    <script type="text/babel" src="js/components/status/EewStatusCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/status/RecentPushesCard.jsx?v=1" defer></script>
+
+    <!-- 11. 图表统计页专属子组件 -->
+    <script type="text/babel" src="js/components/stats/StatsCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/MagnitudeChart.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/TrendChart.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/CalendarHeatmap.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/MaxMagCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/TopListCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/WeatherLevelCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/stats/LogStatsCard.jsx" defer></script>
+
+    <!-- 12. 历史事件记录页专属子组件 -->
+    <script type="text/babel" src="js/components/events/HorizontalTimeline.jsx" defer></script>
+    <script type="text/babel" src="js/components/events/WeatherQueryPanel.jsx" defer></script>
+    <script type="text/babel" src="js/components/events/EventFilters.jsx" defer></script>
+    <script type="text/babel" src="js/components/events/EventCard.jsx" defer></script>
+    <script type="text/babel" src="js/components/events/EventGroupTimeline.jsx" defer></script>
+    <script type="text/babel" src="js/components/events/EventsList.jsx" defer></script>
+
+    <!-- 13. 主路由视图容器组件 -->
+    <script type="text/babel" src="js/views/StatusView.jsx" defer></script>
+    <script type="text/babel" src="js/views/EventsView.jsx" defer></script>
+    <script type="text/babel" src="js/views/StatsView.jsx" defer></script>
+    <script type="text/babel" src="js/views/PushMessagesView.jsx" defer></script>
+
+    <!-- 14. 路由映射配置注册表 -->
+    <script type="text/babel" src="js/routes/viewRegistry.jsx" defer></script>
+
+    <!-- 15. 主程序入口脚本与首屏平滑过渡加载器 -->
+    <script type="text/babel" src="js/app.jsx" defer></script>
+    <script src="js/utils/bootloader.js"></script>
+</body>
+
+</html>
