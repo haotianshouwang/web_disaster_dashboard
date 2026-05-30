@@ -33,8 +33,19 @@ app.use('/api', createProxyMiddleware({
     },
 }));
 
-// ── 静态文件服务 ──
-app.use(express.static(__dirname, { index: 'index.html' }));
+// ── 安全防护：拦截服务端源文件访问 ──
+app.use((req, res, next) => {
+    const p = (req.path || '').toLowerCase();
+    const blocked = ['.env', 'server.js', 'package.json', 'package-lock.json',
+                     'node_modules', '.git', '.gitignore', 'README.md'];
+    if (blocked.some(f => p === '/' + f || p.startsWith('/' + f + '/') || p.includes('/' + f))) {
+        return res.status(404).send('Not Found');
+    }
+    next();
+});
+
+// ── 静态文件服务（仅前端资源，dotfiles 拒绝）──
+app.use(express.static(__dirname, { index: 'index.html', dotfiles: 'deny' }));
 
 // ── SPA fallback ──
 app.get('*', (req, res) => {
