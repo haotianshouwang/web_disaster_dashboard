@@ -10,7 +10,7 @@ function useEventsQuery({ wsEvents, wsConnected, preserveScrollPosition }) {
     var _d = React.useState(0), total = _d[0], setTotal = _d[1];
     var _e = React.useState([]), events = _e[0], setEvents = _e[1];
     var _f = React.useState(false), loading = _f[0], setLoading = _f[1];
-    var _g = React.useState(50), pageSize = _g[0], setPageSize = _g[1];
+    var _g = React.useState(9999), pageSize = _g[0], setPageSize = _g[1];
     var _h = React.useState(200), maxPageSize = _h[0], setMaxPageSize = _h[1];
     var _i = React.useState(''), pageInput = _i[0], setPageInput = _i[1];
     var _j = React.useState('single'), sourceFilterMode = _j[0], setSourceFilterMode = _j[1];
